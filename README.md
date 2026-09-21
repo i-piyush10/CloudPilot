@@ -192,8 +192,3 @@ PROJECT_STATUS.md — current implementation status
 
 License
 This project was developed as an academic capstone and experimental platform.
-
-
-Then press **Ctrl + S** and close Notepad.
-
-**Do not run any terminal command yet.** Tell me once you've saved and closed it.
