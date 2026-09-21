@@ -23,102 +23,177 @@ Prerequisites: Docker with Compose.
 ```bash
 cp .env.example .env
 docker compose up --build
-```
-
 Open:
 
-- CloudPilot UI: <http://localhost:8080>
-- Control-plane API docs: <http://localhost:8000/docs>
-- Sample workload: <http://localhost:8001>
-- Prometheus: <http://localhost:9090>
-- Grafana: <http://localhost:3000> (anonymous local access)
+CloudPilot UI: http://localhost:8080
 
-OpenTelemetry traces are exported locally and can be inspected with:
+Control-plane API docs: http://localhost:8000/docs
 
-```bash
+Sample workload: http://localhost:8001
+
+Prometheus: http://localhost:9090
+
+Grafana: http://localhost:3000
+
+OpenTelemetry traces can be inspected with:
+
 docker compose logs -f otel-collector
-```
+The Compose profile runs in simulation mode, so scaling decisions can be demonstrated without a Kubernetes cluster.
 
-The Compose profile runs in `simulation` mode, so scaling decisions are visible without a Kubernetes cluster.
+Local Kubernetes demo
+Prerequisites: Docker, kubectl, and either kind or Minikube.
 
-## Local Kubernetes demo
-
-Prerequisites: Docker, `kubectl`, and either kind or Minikube. The scripts default to kind.
-
-```bash
 ./scripts/bootstrap-kind.sh
 ./scripts/deploy-local.sh
 ./scripts/port-forward.sh
-```
+Then open:
 
-Then open <http://localhost:8080>. Run the load generator in another terminal:
+http://localhost:8080
 
-```bash
+Run the load generator in another terminal:
+
 ./scripts/run-load.sh spike
-```
+For a recorded experiment:
 
-For a recorded experiment, use the UI experiment notebook or run:
-
-```bash
 ./scripts/run-experiment.sh predictive spike
-```
+Repeat the experiment with fixed, hpa, and predictive modes to compare their behavior.
 
-Repeat that command with `fixed`, `hpa`, and `predictive`; CSV evidence is written to `results/` with separate filenames.
+Only one autoscaling controller should own the workload at a time. Selecting predictive or fixed mode removes the HPA, while selecting HPA pauses CloudPilot replica writes.
 
-To switch among modes, use the UI or API. Only one autoscaling controller should own the workload at a time; selecting predictive or fixed mode removes the HPA, while selecting HPA pauses CloudPilot replica writes.
-
-## Development
-
-```bash
+Development
+Backend
 python3 -m venv .venv
 . .venv/bin/activate
-make install
-make test
-./scripts/dev-local.sh
-```
+pip install -r backend/requirements.txt
+Start the backend:
 
-Open <http://127.0.0.1:5173/>. Do not open `frontend/index.html` using a `file://` URL: Vite must serve the React modules, and it proxies `/api` requests to the local control plane. Press `Ctrl+C` in the terminal to stop all three development services.
+python -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
+Frontend
+cd frontend
+npm install
+npm run dev
+Open:
 
-The lightweight development command does not start Prometheus, Grafana, or the OpenTelemetry Collector. The dashboard therefore labels Grafana as **full stack only**. Use `docker compose up --build` or the Kubernetes deployment to enable the Grafana link at <http://localhost:3000/d/cloudpilot-main>.
+http://127.0.0.1:5173/
 
-To populate the development dashboard with a deterministic real-time fixture stream, open another terminal and run:
+Vite proxies /api requests to the local control plane.
 
-```bash
-cd /Users/omyad/Documents/Om/CloudPilot
-./scripts/run-fixtures.sh --scenario spike --mode predictive
-```
+The lightweight development setup does not start Prometheus, Grafana, or the OpenTelemetry Collector. Use Docker Compose or the Kubernetes deployment when the full observability stack is required.
 
-The streamer posts a new sample every two seconds and triggers a control decision. Use `Ctrl+C` to stop it. Other scenarios are `ramp`, `periodic`, and `constant`.
+Scaling modes
+Fixed
+Maintains a configured replica count and provides a baseline for comparison.
 
-Python services run from `backend/` and `workload/`; the UI runs from `frontend/`.
+HPA
+Uses Kubernetes Horizontal Pod Autoscaling based on CPU utilization.
 
-## Safety boundaries
+Predictive
+Uses a lightweight CPU-only linear-trend predictor to estimate near-future request demand and calculate the required replica count.
 
-- Replica counts are clamped to configured minimum and maximum values.
-- Scaling uses a cooldown and requires sufficient telemetry.
-- Self-healing actions are selected from an allow-list.
-- The UI cannot submit arbitrary shell commands.
-- Kubernetes commands use configured resource names and namespaces only.
-- This is an educational prototype, not a production autonomous-operations system.
+The predictive controller applies safety boundaries including:
 
-## Project layout
+Minimum and maximum replica limits
 
-```text
+Forecast confidence thresholds
+
+Scaling cooldowns
+
+Capacity-per-pod limits
+
+Bounded forecast extrapolation
+
+Monitoring and observability
+CloudPilot integrates:
+
+Prometheus for metrics collection
+
+Grafana for visualization
+
+OpenTelemetry Collector for traces
+
+Application-level request, latency, CPU, memory, and error metrics
+
+Control-plane decision and incident logs
+
+The system exposes health and metrics endpoints for the workload and control plane.
+
+Fault injection and self-healing
+CloudPilot includes controlled fault scenarios for demonstration:
+
+Latency injection
+
+Error injection
+
+CPU stress
+
+Anomaly detection
+
+Allow-listed Kubernetes rollout restart
+
+High-severity anomalies such as sustained error conditions can trigger a controlled recovery action.
+
+Safety boundaries
+Replica counts are clamped to configured minimum and maximum values.
+
+Scaling requires sufficient telemetry and respects cooldown periods.
+
+Self-healing actions are selected from an allow-list.
+
+The UI cannot submit arbitrary shell commands.
+
+Kubernetes commands use configured resource names and namespaces only.
+
+This is an educational prototype, not a production autonomous-operations system.
+
+Project layout
 backend/        Control plane, predictor, store, cluster adapter
 workload/       Instrumented sample application
 frontend/       React control center
 deploy/         Docker, Prometheus, Grafana, Kubernetes manifests
 load-tests/     Locust workload scenarios
 scripts/        Local setup, deployment, port-forwarding, demo helpers
-tests/          End-to-end smoke tests
-```
+docs/           Architecture and demonstration documentation
+Evaluation
+Run the same workload scenario in fixed, HPA, and predictive modes.
 
-See [Architecture](docs/ARCHITECTURE.md) and [Demo and evaluation runbook](docs/DEMO.md) for the component boundaries and a faculty-ready demonstration sequence.
+Compare:
 
-## Evaluation
+p95 latency
 
-Run the same load scenario in fixed, HPA, and predictive modes. Compare p95 latency, error rate, replica-seconds, scaling delay, decision count, forecast error, anomaly detection time, and recovery time. Do not report expected improvements as measured results until experiments are executed.
+Error rate
 
-## Laptop sizing
+Replica-seconds
 
-The Compose simulation is the lightest option. For the Kubernetes demonstration, allocate approximately 4 CPU cores and 6 GB RAM to Docker; close unrelated applications on an 8 GB laptop. Grafana and OpenTelemetry can be temporarily scaled to zero if memory is constrained, without disabling the core controller.
+Scaling delay
+
+Decision count
+
+Forecast error
+
+Anomaly detection time
+
+Recovery time
+
+Measured results should only be reported after the corresponding experiments have been executed.
+
+Laptop sizing
+The Compose simulation is the lightest option.
+
+For the Kubernetes demonstration, approximately 4 CPU cores and 6 GB RAM should be allocated to Docker Desktop when possible. On an 8 GB laptop, close unrelated applications if the cluster becomes memory-constrained.
+
+Documentation
+See:
+
+docs/ARCHITECTURE.md — system architecture and component boundaries
+
+docs/DEMO.md — demonstration and evaluation runbook
+
+PROJECT_STATUS.md — current implementation status
+
+License
+This project was developed as an academic capstone and experimental platform.
+
+
+Then press **Ctrl + S** and close Notepad.
+
+**Do not run any terminal command yet.** Tell me once you've saved and closed it.
