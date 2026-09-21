@@ -1,0 +1,71 @@
+services:
+  workload:
+    build:
+      context: ./workload
+    environment:
+      WORKLOAD_PORT: "8001"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    ports:
+      - "8001:8001"
+
+  control-plane:
+    build:
+      context: ./backend
+    environment:
+      CLOUDPILOT_MODE: simulation
+      CLOUDPILOT_DATABASE: /data/cloudpilot.db
+      CLOUDPILOT_WORKLOAD_URL: http://workload:8001
+      CLOUDPILOT_PROMETHEUS_URL: http://prometheus:9090
+      CLOUDPILOT_ALLOWED_ORIGINS: http://localhost:5173,http://localhost:8080
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    volumes:
+      - cloudpilot-data:/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      - workload
+      - prometheus
+      - otel-collector
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.135.0
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./deploy/opentelemetry/collector.yml:/etc/otelcol/config.yml:ro
+    ports:
+      - "4318:4318"
+
+  prometheus:
+    image: prom/prometheus:v3.13.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=2d"]
+    volumes:
+      - ./deploy/prometheus/prometheus.compose.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - workload
+
+  grafana:
+    image: grafana/grafana:13.2.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - control-plane
+
+volumes:
+  cloudpilot-data:

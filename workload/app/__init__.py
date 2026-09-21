@@ -1,0 +1,2 @@
+"""Instrumented sample CloudPilot workload."""
+

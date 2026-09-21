@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudpilot-frontend
+  namespace: cloudpilot
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: cloudpilot-frontend }
+  template:
+    metadata:
+      labels: { app: cloudpilot-frontend }
+    spec:
+      containers:
+        - name: frontend
+          image: cloudpilot/frontend:local
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 80 }]
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { cpu: 150m, memory: 96Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: cloudpilot
+spec:
+  selector: { app: cloudpilot-frontend }
+  ports: [{ port: 80, targetPort: 80 }]
+

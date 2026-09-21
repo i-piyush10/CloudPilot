@@ -1,0 +1,11 @@
+apiVersion: 1
+providers:
+  - name: CloudPilot
+    orgId: 1
+    folder: CloudPilot
+    type: file
+    disableDeletion: true
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards
+

@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  namespace: cloudpilot
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: CloudPilot
+        folder: CloudPilot
+        type: file
+        options:
+          path: /var/lib/grafana/dashboards
+  cloudpilot.json: |
+    {
+      "annotations":{"list":[]},
+      "editable":true,
+      "panels":[
+        {"type":"timeseries","title":"Observed and predicted request rate","gridPos":{"h":8,"w":12,"x":0,"y":0},"targets":[{"expr":"cloudpilot_observed_request_rate","legendFormat":"observed rps"},{"expr":"cloudpilot_predicted_rps","legendFormat":"predicted rps"}]},
+        {"type":"timeseries","title":"Current and desired replicas","gridPos":{"h":8,"w":12,"x":12,"y":0},"targets":[{"expr":"cloudpilot_current_replicas","legendFormat":"current"},{"expr":"cloudpilot_desired_replicas","legendFormat":"desired"}]},
+        {"type":"timeseries","title":"p95 latency (ms)","gridPos":{"h":8,"w":12,"x":0,"y":8},"targets":[{"expr":"cloudpilot_observed_p95_latency_ms","legendFormat":"p95"}]},
+        {"type":"timeseries","title":"Error rate","gridPos":{"h":8,"w":12,"x":12,"y":8},"targets":[{"expr":"cloudpilot_observed_error_rate","legendFormat":"ratio"}]}
+      ],
+      "refresh":"5s","schemaVersion":41,"tags":["cloudpilot"],"time":{"from":"now-15m","to":"now"},"title":"CloudPilot Technical Dashboard","uid":"cloudpilot-main","version":1
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: cloudpilot
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: grafana }
+  template:
+    metadata:
+      labels: { app: grafana }
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:13.2.0
+          ports: [{ containerPort: 3000 }]
+          env:
+            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "true" }
+            - { name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: "Viewer" }
+            - { name: GF_AUTH_DISABLE_LOGIN_FORM, value: "true" }
+          resources:
+            requests: { cpu: 100m, memory: 160Mi }
+            limits: { cpu: 400m, memory: 400Mi }
+          volumeMounts:
+            - { name: provisioning, mountPath: /etc/grafana/provisioning/datasources/datasource.yaml, subPath: datasource.yaml }
+            - { name: provisioning, mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml, subPath: dashboards.yaml }
+            - { name: provisioning, mountPath: /var/lib/grafana/dashboards/cloudpilot.json, subPath: cloudpilot.json }
+          readinessProbe:
+            httpGet: { path: /api/health, port: 3000 }
+            initialDelaySeconds: 10
+      volumes:
+        - name: provisioning
+          configMap: { name: grafana-provisioning }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: cloudpilot
+spec:
+  selector: { app: grafana }
+  ports: [{ port: 3000, targetPort: 3000 }]

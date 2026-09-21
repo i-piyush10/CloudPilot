@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudpilot-control-plane
+  namespace: cloudpilot
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: cloudpilot-control-plane }
+  template:
+    metadata:
+      labels: { app: cloudpilot-control-plane }
+    spec:
+      serviceAccountName: cloudpilot-controller
+      containers:
+        - name: control-plane
+          image: cloudpilot/control-plane:local
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8000 }]
+          env:
+            - { name: CLOUDPILOT_MODE, value: "kubernetes" }
+            - { name: CLOUDPILOT_DATABASE, value: "/data/cloudpilot.db" }
+            - { name: CLOUDPILOT_PROMETHEUS_URL, value: "http://prometheus:9090" }
+            - { name: CLOUDPILOT_NAMESPACE, value: "cloudpilot" }
+            - { name: CLOUDPILOT_DEPLOYMENT, value: "cloudpilot-workload" }
+            - { name: CLOUDPILOT_MIN_REPLICAS, value: "1" }
+            - { name: CLOUDPILOT_MAX_REPLICAS, value: "8" }
+            - { name: CLOUDPILOT_WORKLOAD_URL, value: "http://workload:8001" }
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector:4318" }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 384Mi }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 5
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane
+  namespace: cloudpilot
+spec:
+  selector: { app: cloudpilot-control-plane }
+  ports: [{ port: 8000, targetPort: 8000 }]
